@@ -1,0 +1,22 @@
+<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Admin — HousesApp</title><link rel="stylesheet" href="assets/style.css"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script></head><body>
+<div class="container">
+  <div class="header"><div class="brand"><div class="logo">H</div><div><div class="title">HousesApp</div><div class="lang">Admin</div></div></div><div><button onclick="logout()" class="btn secondary">Logout</button></div></div>
+  <div class="card">
+    <h3>Gérer maisons</h3>
+    <div class="row"><button onclick="loadHouses()" class="btn">Refresh</button></div>
+    <div id="houses" class="house-list"></div>
+  </div>
+</div>
+<script src="assets/app.js"></script>
+<script>
+const SUPABASE_URL = "https://jethjfwkitfgjnbbldgm.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpldGhqZndraXRmZ2puYmJsZGdtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY2Njk1OTIsImV4cCI6MjA3MjI0NTU5Mn0.ZOQG4wu9CxfEbTNB4pfmO0YWHX5Hsb7OZ841ddOKjJg";
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+function logout(){ supabase.auth.signOut().then(()=>location.href='index.html'); }
+async function loadHouses(){ const r = await supabase.auth.getUser(); if(!r.data?.user) return location.href='index.html'; const { data, error } = await supabase.from('houses').select('*').order('id',{ascending:false}); const wrap = document.getElementById('houses'); wrap.innerHTML=''; if(error) return wrap.innerHTML='<div class=\"kv\">Erreur</div>'; if(!data.length) return wrap.innerHTML='<div class=\"kv\">Aucune maison</div>'; data.forEach(h=>{ const el=document.createElement('div'); el.className='house'; el.innerHTML = `<div class='media'><img src='${h.before_image||h.image_url||"https://via.placeholder.com/400x240"}'></div><div class='meta'><h3>${h.title||'-'}</h3><div class='icon-row'><div class='icon'>🔑<div class='kv'>${h.door_code||'-'}</div></div><div class='icon'>🛏️<strong>${(h.double_beds||0)}/${(h.single_beds||0)}</strong></div><div class='icon'>🛁<strong>${h.bathrooms||0}</strong></div><div class='icon'>🚽<strong>${h.toilets||0}</strong></div></div><div style='margin-top:8px;color:var(--muted)'>${h.address||''}</div></div><div class='actions'><button class='small' onclick='markDone(${h.id})'>${h.completed? 'Done' : 'Mark done'}</button><button class='small' onclick='edit(${h.id})'>Edit</button><button class='small ghost' onclick='del(${h.id})'>Delete</button><button class='small' onclick='openMap("${encodeURI(h.map_url||'')}")'>Map</button></div>`; wrap.appendChild(el); }); }
+window.markDone = async function(id){ await supabase.from('houses').update({ completed:true, completed_at:new Date().toISOString() }).eq('id', id); loadHouses(); }
+window.edit = async function(id){ const { data } = await supabase.from('houses').select('*').eq('id', id).single(); const newT = prompt('Titre', data.title||''); if(newT===null) return; await supabase.from('houses').update({ title:newT }).eq('id', id); loadHouses(); }
+window.del = async function(id){ if(!confirm('Supprimer?')) return; await supabase.from('houses').delete().eq('id', id); loadHouses(); }
+function openMap(url){ if(!url) return alert('No map'); window.open(decodeURIComponent(url),'_blank'); }
+loadHouses();
+</script></body></html>

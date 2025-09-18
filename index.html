@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>HousesApp — Connexion</title>
+  <link rel="stylesheet" href="assets/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="brand"><div class="logo">H</div><div><div class="title">HousesApp</div><div class="lang">Dark • FR/EN/AR/NL</div></div></div>
+    </div>
+
+    <div class="login-box card">
+      <h2>Connexion</h2>
+      <div class="form">
+        <input id="email" type="email" placeholder="Email">
+        <input id="password" type="password" placeholder="Mot de passe">
+        <div class="row"><button id="btnLogin" class="btn">Se connecter</button><button id="btnTest" class="btn secondary">Tester API</button></div>
+      </div>
+      <div id="debug" class="kv" style="margin-top:10px;color:var(--muted)"></div>
+    </div>
+  </div>
+
+<script src="assets/app.js"></script>
+<script>
+const SUPABASE_URL = "https://jethjfwkitfgjnbbldgm.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpldGhqZndraXRmZ2puYmJsZGdtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY2Njk1OTIsImV4cCI6MjA3MjI0NTU5Mn0.ZOQG4wu9CxfEbTNB4pfmO0YWHX5Hsb7OZ841ddOKjJg";
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+document.getElementById('btnTest').addEventListener('click', async ()=>{
+  try{ const r = await supabase.from('profiles').select('id').limit(1); notify(r.error ? 'Error: '+r.error.message : 'OK: profiles reachable'); }
+  catch(e){ notify('Exception: '+e.message); }
+});
+
+document.getElementById('btnLogin').addEventListener('click', async ()=>{
+  const email = document.getElementById('email').value.trim();
+  const password = document.getElementById('password').value.trim();
+  if(!email||!password){ alert('Email & mot de passe requis'); return; }
+  notify('Connexion...');
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  if(error){ notify('Auth error: '+error.message); alert('Erreur: '+error.message); return; }
+  const { data: profile, error: pErr } = await supabase.from('profiles').select('role').eq('id', data.user.id).single();
+  if(pErr || !profile){ notify('Profile read error: '+(pErr? pErr.message : 'no role')); alert('Profile non trouvé ou role manquant'); return; }
+  if(profile.role === 'superadmin') location.href='superadmin.html';
+  else if(profile.role === 'admin') location.href='admin.html';
+  else location.href='user.html';
+});
+</script>
+</body>
+</html>

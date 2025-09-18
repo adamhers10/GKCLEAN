@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="fr">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Superadmin — HousesApp</title><link rel="stylesheet" href="assets/style.css"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script></head>
+<body>
+  <div class="container">
+    <div class="header"><div class="brand"><div class="logo">H</div><div><div class="title">HousesApp</div><div class="lang">Superadmin</div></div></div><div><button id="logout" class="btn secondary">Logout</button></div></div>
+
+    <div class="card">
+      <div class="dashboard">
+        <div class="stat"><h2 id="totalH">0</h2><p>Total maisons</p></div>
+        <div class="stat"><h2 id="pendingH">0</h2><p>En attente</p></div>
+        <div class="stat"><h2 id="doneH">0</h2><p>Nettoyées</p></div>
+      </div>
+      <h3>Créer utilisateur</h3>
+      <div class="form">
+        <input id="new_email" placeholder="Email" type="email">
+        <input id="new_pass" placeholder="Mot de passe" type="password">
+        <select id="new_role"><option value="user">user</option><option value="admin">admin</option></select>
+        <div class="row"><button id="createUser" class="btn">Créer</button><button id="refreshUsers" class="btn secondary">Rafraîchir users</button></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <h3>Ajouter / Modifier maison</h3>
+      <div class="form">
+        <input id="m_title" placeholder="Titre">
+        <div style="display:flex;gap:8px"><input id="m_rooms" type="number" placeholder="Pièces"><input id="m_double" type="number" placeholder="Lits doubles"><input id="m_single" type="number" placeholder="Lits simples"></div>
+        <div style="display:flex;gap:8px"><input id="m_bath" type="number" placeholder="Salles bain"><input id="m_toilet" type="number" placeholder="Toilettes"><input id="m_code" placeholder="Code porte"></div>
+        <input id="m_address" placeholder="Adresse">
+        <input id="m_map" placeholder="Google Maps URL">
+        <div style="display:flex;gap:8px;align-items:center"><div>Image Avant</div><input id="m_image_before" type="file" accept="image/*"><div>Image Après</div><input id="m_image_after" type="file" accept="image/*"></div>
+        <label>Planifié</label><input id="m_schedule" type="datetime-local">
+        <div class="row"><button id="saveHouse" class="btn">Enregistrer</button><button id="clearHouse" class="btn secondary">Effacer</button></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <div class="row" style="margin-bottom:8px"><select id="assign_user_select" class="input"></select><button id="assignSelected" class="btn small">Assigner sélection</button><button id="selectAll" class="btn small">Tout</button><button id="unselectAll" class="btn secondary small">Annuler</button><button id="refreshHouses" class="btn small">Rafraîchir</button></div>
+      <div id="houses" class="house-list"></div>
+    </div>
+
+    <div id="debug" style="margin-top:12px;color:var(--muted)"></div>
+  </div>
+
+<script src="assets/app.js"></script>
+<script>
+const SUPABASE_URL = "https://jethjfwkitfgjnbbldgm.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpldGhqZndraXRmZ2puYmJsZGdtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY2Njk1OTIsImV4cCI6MjA3MjI0NTU5Mn0.ZOQG4wu9CxfEbTNB4pfmO0YWHX5Hsb7OZ841ddOKjJg";
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const BUCKET = 'houses';
+let editing = null;
+
+function notify(msg){ document.getElementById('debug').textContent = msg; console.log(msg); }
+
+async function ensureSuper(){ const u = await supabase.auth.getUser(); const user = u.data?.user; if(!user) return location.href='index.html'; const { data, error } = await supabase.from('profiles').select('role').eq('id', user.id).single(); if(error || !data) { notify('Profile error'); return false; } if(data.role !== 'superadmin'){ alert('Accès refusé'); location.href='index.html'; return false; } return true; }
+
+document.getElementById('logout').addEventListener('click', async ()=>{ await supabase.auth.signOut(); location.href='index.html'; });
+document.getElementById('createUser').addEventListener('click', async ()=>{
+  const email=document.getElementById('new_email').value.trim(); const pass=document.getElementById('new_pass').value.trim(); const role=document.getElementById('new_role').value;
+  if(!email||!pass) return alert('email/pass required');
+  const { data, error } = await supabase.auth.signUp({ email, password: pass });
+  if(error) return alert('Error: '+error.message);
+  await supabase.from('profiles').insert([{ id: data.user.id, role }]);
+  notify('User created'); loadUsers(); });
+document.getElementById('refreshUsers').addEventListener('click', loadUsers);
+
+async function loadUsers(){ const sel=document.getElementById('assign_user_select'); sel.innerHTML='<option value="">-- choisir user --</option>'; const { data, error } = await supabase.from('profiles').select('id,role'); if(error) return notify('Users error'); data.forEach(u=>{ const o=document.createElement('option'); o.value=u.id; o.textContent = u.id + ' • ' + u.role; sel.appendChild(o); }); }
+
+async function uploadFile(file, path){ if(!file) return null; const { data, error } = await supabase.storage.from(BUCKET).upload(path, file, { upsert:true }); if(error){ console.error(error); return null; } return supabase.storage.from(BUCKET).getPublicUrl(path).publicURL; }
+
+document.getElementById('saveHouse').addEventListener('click', async ()=>{
+  if(!await ensureSuper()) return;
+  const payload = {
+    title: document.getElementById('m_title').value.trim(),
+    rooms: Number(document.getElementById('m_rooms').value)||0,
+    double_beds: Number(document.getElementById('m_double').value)||0,
+    single_beds: Number(document.getElementById('m_single').value)||0,
+    bathrooms: Number(document.getElementById('m_bath').value)||0,
+    toilets: Number(document.getElementById('m_toilet').value)||0,
+    door_code: document.getElementById('m_code').value.trim(),
+    address: document.getElementById('m_address').value.trim(),
+    map_url: document.getElementById('m_map').value.trim(),
+    scheduled_for: document.getElementById('m_schedule').value ? new Date(document.getElementById('m_schedule').value).toISOString() : null
+  };
+  const before = document.getElementById('m_image_before').files[0]; const after = document.getElementById('m_image_after').files[0];
+  const idPart = editing || Date.now().toString();
+  if(before){ const b = await uploadFile(before, idPart + '_before_' + before.name); if(b) payload.before_image = b; }
+  if(after){ const a = await uploadFile(after, idPart + '_after_' + after.name); if(a) payload.after_image = a; }
+  if(editing){ await supabase.from('houses').update(payload).eq('id', editing); editing = null; } else { await supabase.from('houses').insert([payload]); }
+  notify('Saved'); loadHouses();
+});
+
+document.getElementById('selectAll').addEventListener('click', ()=> document.querySelectorAll('.selectHouse').forEach(cb=>cb.checked=true));
+document.getElementById('unselectAll').addEventListener('click', ()=> document.querySelectorAll('.selectHouse').forEach(cb=>cb.checked=false));
+document.getElementById('assignSelected').addEventListener('click', async ()=>{
+  if(!await ensureSuper()) return;
+  const userId = document.getElementById('assign_user_select').value; if(!userId) return alert('Choisir user');
+  const ids = Array.from(document.querySelectorAll('.selectHouse')).filter(cb=>cb.checked).map(cb=>cb.closest('.house').dataset.id); if(!ids.length) return alert('No selection');
+  await supabase.from('houses').update({ assigned_to: userId }).in('id', ids); notify('Assigned'); loadHouses();
+});
+
+document.getElementById('refreshHouses').addEventListener('click', loadHouses);
+
+async function loadHouses(){
+  if(!await ensureSuper()) return;
+  const { data, error } = await supabase.from('houses').select('*').order('id',{ascending:false});
+  if(error){ notify('Load houses error'); return; }
+  document.getElementById('totalH').textContent = data.length;
+  document.getElementById('pendingH').textContent = data.filter(h=>!h.completed).length;
+  document.getElementById('doneH').textContent = data.filter(h=>h.completed).length;
+  const wrap = document.getElementById('houses'); wrap.innerHTML='';
+  data.forEach(h=>{
+    const el = document.createElement('div'); el.className='house'; el.dataset.id = h.id;
+    el.innerHTML = `<div class="media"><img src="${h.before_image||h.image_url||'https://via.placeholder.com/400x240'}" alt=""></div><div class="meta"><h3>${h.title||'Sans titre'}</h3><div class="icon-row"><div class="icon">🔑<div class="kv">${h.door_code||'-'}</div></div><div class="icon">🛏️<strong>${(h.double_beds||0)}/${(h.single_beds||0)}</strong></div><div class="icon">🛁<strong>${h.bathrooms||0}</strong></div><div class="icon">🚽<strong>${h.toilets||0}</strong></div></div><div style="margin-top:8px;color:var(--muted)">${h.address||''}</div><div class="kv">${h.assigned_to? 'Assigné: '+h.assigned_to : 'Non assigné'}</div><div class="timestamp">${h.scheduled_for? 'Planifié: '+new Date(h.scheduled_for).toLocaleString():''}</div></div><div class="actions"><input type="checkbox" class="selectHouse"><button class="small" onclick="toggleStar(${h.id},${h.starred?1:0})">${h.starred? '★' : '☆'}</button><button class="small" onclick="markDone(${h.id})">${h.completed? 'Done' : 'Mark done'}</button><button class="small" onclick="editHouse(${h.id})">Modifier</button><button class="small ghost" onclick="deleteHouse(${h.id})">Supprimer</button><button class="small" onclick="openMap('${encodeURI(h.map_url||'')}')">Carte</button></div>`;
+    wrap.appendChild(el);
+  });
+}
+window.toggleStar = async function(id, cur){ await supabase.from('houses').update({ starred: !cur }).eq('id', id); loadHouses(); }
+window.markDone = async function(id){ await supabase.from('houses').update({ completed:true, completed_at:new Date().toISOString() }).eq('id', id); loadHouses(); }
+window.deleteHouse = async function(id){ if(!confirm('Supprimer?')) return; await supabase.from('houses').delete().eq('id', id); loadHouses(); }
+window.editHouse = async function(id){ const { data } = await supabase.from('houses').select('*').eq('id', id).single(); if(!data) return; editing = id; document.getElementById('m_title').value = data.title||''; document.getElementById('m_rooms').value = data.rooms||0; document.getElementById('m_double').value = data.double_beds||0; document.getElementById('m_single').value = data.single_beds||0; document.getElementById('m_bath').value = data.bathrooms||0; document.getElementById('m_toilet').value = data.toilets||0; document.getElementById('m_code').value = data.door_code||''; document.getElementById('m_address').value = data.address||''; if(data.scheduled_for) document.getElementById('m_schedule').value = new Date(data.scheduled_for).toISOString().slice(0,16); }
+window.openMap = function(url){ if(!url) return alert('No map'); window.open(decodeURIComponent(url),'_blank'); }
+loadUsers(); loadHouses();
+</script>
+</body>
+</html>
